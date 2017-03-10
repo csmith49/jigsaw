@@ -1,4 +1,5 @@
 import os
+from . import tree
 
 # we'll often be manipulating weird files, let's make getting the relevant stuff easier
 def get_extension(path):
@@ -10,24 +11,25 @@ def is_dir(path):
 def get_name(path):
     return os.path.basename(path)
 
-# and now one of the more annoying parts, getting the right form of a dir tree
-def get_dir_tree(path):
-    # if we're a directory, we'll need to recurse
-    if is_dir(path):
-        output = []
-        # walk down just a step in the recursion
-        p, dirs, files = os.walk(path)[0]
-        # we won't go down the files
-        for f in files:
-            output.append(os.path.join(p, f))
-        # but we will the dirs
-        for d in dirs:
-            sub_tree = get_dir_tree(os.path.join(p, d))
-            output.append( (d, sub_tree) )
-    # otherwise we're just a file and we'll return the path
-    else:
-        return [path]
-
 # and we'll probably have to reconstruct paths at some point
-def get_path(base, file):
+def join(base, file):
     return os.path.join(base, file)
+
+def get_children(path):
+    p, dirs, files = list(os.walk(path))[0]
+    return [join(p, c) for c in dirs + files]
+
+# and now one of the more annoying parts, getting the right form of a dir tree
+def get_tree(path):
+    if is_dir(path):
+        name = get_name(path)
+        kids = [get_tree(c) for c in get_children(path)]
+        return tree.Directory(name, kids)
+    else:
+        return tree.File(path)
+
+# fancy check that makes intermediate directories
+def dir_check(path):
+    dir = os.path.dirname(path)
+    if not os.path.exists(dir):
+        os.makedirs(dir)

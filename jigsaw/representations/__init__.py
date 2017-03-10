@@ -1,60 +1,60 @@
 from jigsaw.loaders import data, templates
+from jigsaw.utilities.tree import *
 from jigsaw import utilities
+from functools import reduce
 
 class Data(object):
-    def __init__(self, path):
-        tree = utilities.get_dir_tree(path)
-        self._dict = self._convert_tree(tree)
-    def _convert_tree(self, tree):
-        output = {}
-        # recurse on the directory tree
-        for node in tree:
-            # if it's a file, update the output
-            if isinstance(node, str):
-                output.update(data.load_file(node))
-            # otherwise, recurse and it'll be great
+    def __init__(self, path=None):
+        if path is None:
+            self.dict = {}
+        else:
+            tree = utilities.get_tree(path)
+            # we ignore top-most directory names, so fix it here
+            if isinstance(tree, File):
+                forest = [tree]
             else:
-                d, children = node
-                output[d] = [self._convert_tree(c) for c in children]
-        # aaaand we're done
-        return output
-    def update(self, other):
-        self._dict.update(other._dict)
+                forest = tree.kids
+            # convert every element in the forest into a dictionary
+            dicts = [self.load_from_tree(f) for f in forest]
+            # and then flatten
+            self.dict = reduce(lambda p, q: {**p, **q}, dicts)
+    def load_from_tree(self, tree):
+        f = lambda p: data.load_file(p)
+        g = lambda d, k: {d : k}
+        return tree_cata(f, g, tree)
+    def __add__(self, other):
+        out = Data()
+        out.dict.update(self.dict)
+        out.dict.update(other.dict)
+        return out
+
+class TemplateNode(object):
+    def __init__(self, path):
+        self.name = utilities.get_name(path)
+        self.template = templates.load_file(path)
+    def render(self, data, base):
+        if isinstance(self.template, templates.Resource):
+            self.template.render(base)
+        else:
+            path = utilities.join(base, self.name)
+            utilities.dir_check(path)
+            with open(path, 'w') as f:
+                f.write(self.template.render(data))
+        # not really necessary, but why not
+        return self
 
 class Template(object):
-    # go ahead and load them up...
-    class Node(object):
-        def __init__(self, path):
-            self.name = utilities.get_name(path)
-            self.template = templates.load_file(path)
-        def render(self, data, path):
-            with open(path, 'r') as f:
-                f.write(self.template.render(data))
-    # a template is basically a tree of paths w/jinja templates
     def __init__(self, path):
-        tree = utilities.get_dir_tree(path)
-        self._tree = self._convert_tree(tree)
-    def _convert_tree(self, tree):
-        output = []
-        for node in tree:
-            # if we've got a file...
-            if isinstance(node, str):
-                output.append(Node(node))
-            # otherwise, it's a directory
-            else:
-                d, children = node
-                output.append( (d, [self._convert_tree(c) for c in children]))
-        return output
-    def render(self, base, data):
-        for node in self._tree:
-            # if we're at a Node:
-            if isinstance(node, Node):
-                # get our new path
-                path = utilities.get_path(base, node.name)
-                node.render(data, path)
-            # otherwise, recurse with a new base
-            else:
-                d, children = node
-                for c in children:
-                    new_base = utilities.get_path(base, d)
-                    self.render(new_base, data)
+        self.tree = tree_map(TemplateNode, utilities.get_tree(path))
+    def rebase(self, base):
+        if isinstance(self.tree, File):
+            self.tree.name = base
+        elif isinstance(self.tree, Directory):
+            self.tree.value = base
+    def render(self, data):
+        def f(path, tree):
+            filepath = "."
+            for p in path:
+                filepath = utilities.join(filepath, p)
+            return tree.render(data, filepath)
+        return path_map(f, self.tree)

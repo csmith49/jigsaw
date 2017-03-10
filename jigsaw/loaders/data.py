@@ -13,7 +13,7 @@ def load_file(path):
     try:
         loader = LOADERS[ext]
     except KeyError:
-        raise Exception("Can't find loader for file extension {}".format(ext))
+        raise Exception("Can't find loader for {}".format(path))
     # now actually open the file and get the results
     with open(path, 'r') as f:
         return loader(f.read())
