@@ -1,9 +1,19 @@
 import yaml
-from jigsaw.utilities import get_extension
+from markdown2 import markdown
+from jigsaw.utilities import get_extension, get_name
+
+def md_load(string):
+    html = markdown(string, extras=["metadata"])
+    output = {}
+    for tag, value in html.metadata.items():
+        output[tag] = markdown(value)
+    output["text"] = html.strip()
+    return output
 
 # loaders are functions of type String -> Dict
 LOADERS = {
-    ".yaml": yaml.load
+    ".yaml": yaml.load,
+    ".md": md_load
 }
 
 def load_file(path):
